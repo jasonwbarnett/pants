@@ -2816,7 +2816,7 @@ dependencies = [
  "indoc",
  "libc",
  "memoffset 0.9.0",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "pyo3-build-config 0.20.2",
  "pyo3-ffi",
  "pyo3-macros",
@@ -4048,8 +4048,7 @@ dependencies = [
 [[package]]
 name = "tonic"
 version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d560933a0de61cf715926b9cac824d4c883c2c43142f787595e48280c40a1d0e"
+source = "git+https://github.com/jasonwbarnett/tonic.git?branch=jwb/add-better-err-messages#a642c67f8f59f006eac3ab360143bf39605b00b1"
 dependencies = [
  "async-stream",
  "async-trait",
