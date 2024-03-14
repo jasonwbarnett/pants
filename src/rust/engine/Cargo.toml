@@ -317,7 +317,7 @@ tokio-rustls = "0.24"
 tokio-stream = "0.1"
 tokio-util = "0.7"
 toml = "0.5"
-tonic = "0.10"
+tonic = { git = "https://github.com/jasonwbarnett/tonic.git", branch = "jwb/add-better-err-messages" }
 tonic-build = "0.10"
 tower = "0.4"
 tower-layer = "0.3"
