@@ -4048,7 +4048,7 @@ dependencies = [
 [[package]]
 name = "tonic"
 version = "0.10.2"
-source = "git+https://github.com/jasonwbarnett/tonic.git?branch=jwb/add-better-err-messages#a642c67f8f59f006eac3ab360143bf39605b00b1"
+source = "git+https://github.com/jasonwbarnett/tonic.git?branch=jwb/set-max-message-size-very-high#7af95dfc813305a29bad664ecb29be53c5772235"
 dependencies = [
  "async-stream",
  "async-trait",
