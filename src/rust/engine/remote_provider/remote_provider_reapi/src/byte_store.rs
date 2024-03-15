@@ -92,9 +92,10 @@ impl Provider {
             Some((options.timeout, Metric::RemoteStoreRequestTimeouts)),
         );
 
+        let limit = 25 * 1024 * 1024;
         let byte_stream_client = Arc::new(ByteStreamClient::new(channel.clone()));
 
-        let cas_client = Arc::new(ContentAddressableStorageClient::new(channel.clone()));
+        let cas_client = Arc::new(ContentAddressableStorageClient::new(channel.clone()).max_decoding_message_size(limit));
 
         let capabilities_client = Arc::new(CapabilitiesClient::new(channel));
 
