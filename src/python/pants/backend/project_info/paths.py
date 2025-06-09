@@ -25,6 +25,7 @@ from pants.engine.target import (
     TransitiveTargetsRequest,
 )
 from pants.option.option_types import StrOption
+from pants.util.strutil import softwrap
 
 
 class PathsSubsystem(Outputting, GoalSubsystem):
@@ -110,12 +111,16 @@ class RootDestinationsPair:
 
 @rule(desc="Get paths between root and destination.")
 async def get_paths_between_root_and_destination(pair: RootDestinationPair) -> SpecsPaths:
+    console = Console()
+    console.print_stderr(f"Processing paths from {pair.root.address.spec} to {pair.destination.address.spec}...")
+
     transitive_targets = await transitive_targets_get(
         TransitiveTargetsRequest(
             [pair.root.address], should_traverse_deps_predicate=AlwaysTraverseDeps()
         ),
         **implicitly(),
     )
+    console.print_stderr(f"Found {len(transitive_targets.closure)} transitive dependencies for {pair.root.address.spec}")
 
     adjacent_targets_per_target = await concurrently(
         resolve_targets(
@@ -137,6 +142,11 @@ async def get_paths_between_root_and_destination(pair: RootDestinationPair) -> S
     ):
         spec_path = [address.spec for address in path]
         spec_paths.append(spec_path)
+
+    if spec_paths:
+        console.print_stderr(f"Found {len(spec_paths)} paths from {pair.root.address.spec} to {pair.destination.address.spec}")
+    else:
+        console.print_stderr(f"No paths found from {pair.root.address.spec} to {pair.destination.address.spec}")
 
     return SpecsPaths(paths=spec_paths)
 
@@ -167,6 +177,7 @@ async def paths(console: Console, paths_subsystem: PathsSubsystem) -> PathsGoal:
 
     specs_parser = SpecsParser()
 
+    console.print_stderr("Resolving source and destination targets...")
     from_tgts, to_tgts = await concurrently(
         resolve_targets(
             **implicitly(
@@ -190,6 +201,15 @@ async def paths(console: Console, paths_subsystem: PathsSubsystem) -> PathsGoal:
         ),
     )
 
+    console.print_stderr(
+        softwrap(
+            f"""
+            Found {len(from_tgts)} source targets and {len(to_tgts)} destination targets.
+            Finding paths between targets...
+            """
+        )
+    )
+
     all_spec_paths = []
     spec_paths = await concurrently(
         get_paths_between_root_and_destinations(
@@ -201,6 +221,15 @@ async def paths(console: Console, paths_subsystem: PathsSubsystem) -> PathsGoal:
     for spec_path in spec_paths:
         for path in (p.paths for p in spec_path.spec_paths):
             all_spec_paths.extend(path)
+
+    console.print_stderr(
+        softwrap(
+            f"""
+            Path finding complete.
+            Found {len(all_spec_paths)} total paths between {len(from_tgts)} source targets and {len(to_tgts)} destination targets.
+            """
+        )
+    )
 
     with paths_subsystem.output(console) as write_stdout:
         write_stdout(json.dumps(all_spec_paths, indent=2) + "\n")
