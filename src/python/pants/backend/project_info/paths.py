@@ -28,6 +28,13 @@ from pants.option.option_types import StrOption
 from pants.util.strutil import softwrap
 
 
+@dataclass
+class PathProgress:
+    paths_found: int = 0
+    edges_visited: int = 0
+    last_progress_update: int = 0
+
+
 class PathsSubsystem(Outputting, GoalSubsystem):
     name = "paths"
     help = (
@@ -55,7 +62,7 @@ def find_paths_breadth_first(
     adjacency_lists: dict[Address, Targets],
     from_target: Address,
     to_target: Address,
-    console: Console,
+    progress: PathProgress,
 ) -> Iterable[list[Address]]:
     """Yields the paths between from_target to to_target if they exist.
 
@@ -69,9 +76,6 @@ def find_paths_breadth_first(
 
     visited_edges = set()
     to_walk_paths = deque([[from_target]])
-    paths_found = 0
-    edges_visited = 0
-    last_progress_update = 0
 
     while len(to_walk_paths) > 0:
         cur_path = to_walk_paths.popleft()
@@ -84,17 +88,12 @@ def find_paths_breadth_first(
         current_edge = (prev_target, target)
 
         if current_edge not in visited_edges:
-            edges_visited += 1
-            if edges_visited - last_progress_update >= 1000:
-                console.print_stderr(f"Exploring paths... Found {paths_found} paths, visited {edges_visited} edges")
-                last_progress_update = edges_visited
+            progress.edges_visited += 1
 
             for dep in adjacency_lists.get(target, []):
                 dep_path = cur_path + [dep.address]
                 if dep.address == to_target:
-                    paths_found += 1
-                    if paths_found % 100 == 0:
-                        console.print_stderr(f"Found {paths_found} paths so far...")
+                    progress.paths_found += 1
                     yield dep_path
                 else:
                     to_walk_paths.append(dep_path)
@@ -126,9 +125,7 @@ class RootDestinationsPair:
 @rule(desc="Get paths between root and destination.")
 async def get_paths_between_root_and_destination(
     pair: RootDestinationPair,
-    console: Console,
 ) -> SpecsPaths:
-    console.print_stderr(f"Loading dependencies for {pair.root.address}...")
     transitive_targets = await transitive_targets_get(
         TransitiveTargetsRequest(
             [pair.root.address], should_traverse_deps_predicate=AlwaysTraverseDeps()
@@ -136,7 +133,6 @@ async def get_paths_between_root_and_destination(
         **implicitly(),
     )
 
-    console.print_stderr(f"Resolving {len(transitive_targets.closure)} targets...")
     adjacent_targets_per_target = await concurrently(
         resolve_targets(
             **implicitly(
@@ -151,10 +147,10 @@ async def get_paths_between_root_and_destination(
     transitive_targets_closure_addresses = (t.address for t in transitive_targets.closure)
     adjacency_lists = dict(zip(transitive_targets_closure_addresses, adjacent_targets_per_target))
 
-    console.print_stderr(f"Finding paths from {pair.root.address} to {pair.destination.address}...")
+    progress = PathProgress()
     spec_paths = []
     for path in find_paths_breadth_first(
-        adjacency_lists, pair.root.address, pair.destination.address, console
+        adjacency_lists, pair.root.address, pair.destination.address, progress
     ):
         spec_path = [address.spec for address in path]
         spec_paths.append(spec_path)
@@ -165,13 +161,10 @@ async def get_paths_between_root_and_destination(
 @rule(desc="Get paths between root and multiple destinations.")
 async def get_paths_between_root_and_destinations(
     pair: RootDestinationsPair,
-    console: Console,
 ) -> SpecsPathsCollection:
-    console.print_stderr(f"Finding paths to {len(pair.destinations)} destinations...")
     spec_paths = await concurrently(
         get_paths_between_root_and_destination(
             RootDestinationPair(destination=destination, root=pair.root),
-            console=console,
         )
         for destination in pair.destinations
     )
@@ -217,17 +210,15 @@ async def paths(console: Console, paths_subsystem: PathsSubsystem) -> PathsGoal:
 
     console.print_stderr(f"Found {len(from_tgts)} source targets and {len(to_tgts)} destination targets")
     all_spec_paths = []
-    spec_paths = await concurrently(
-        get_paths_between_root_and_destinations(
-            RootDestinationsPair(root=root, destinations=to_tgts),
-            console=console,
-        )
-        for root in from_tgts
-    )
 
-    for spec_path in spec_paths:
-        for path in (p.paths for p in spec_path.spec_paths):
+    for i, root in enumerate(from_tgts, 1):
+        console.print_stderr(f"Processing source {i}/{len(from_tgts)}: {root.address}")
+        spec_paths = await get_paths_between_root_and_destinations(
+            RootDestinationsPair(root=root, destinations=to_tgts),
+        )
+        for path in (p.paths for p in spec_paths.spec_paths):
             all_spec_paths.extend(path)
+        console.print_stderr(f"Found {len(all_spec_paths)} total paths so far")
 
     with paths_subsystem.output(console) as write_stdout:
         write_stdout(json.dumps(all_spec_paths, indent=2) + "\n")
